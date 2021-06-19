@@ -102,26 +102,14 @@ func (ts *taskServer) createTaskHandler(w http.ResponseWriter, req *http.Request
 	id := ts.store.CreateTask(rt.Text, rt.Tags, rt.Due)
 
 	// Encode reponse
-	js, err := json.Marshal(ResponseId{Id: id})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	renderJSON(w, ResponseId{Id: id})
 }
 
 func (ts *taskServer) getAllTasksHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("handling get all tasks at %s\n", req.URL.Path)
 
-	allTasks := ts.store.GetAllTasks()
-	js, err := json.Marshal(allTasks)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	tasks := ts.store.GetAllTasks()
+	renderJSON(w, tasks)
 }
 
 func (ts *taskServer) getTaskHandler(w http.ResponseWriter, req *http.Request, id int) {
@@ -133,13 +121,7 @@ func (ts *taskServer) getTaskHandler(w http.ResponseWriter, req *http.Request, i
 		return
 	}
 
-	js, err := json.Marshal(task)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	renderJSON(w, task)
 }
 
 func (ts *taskServer) deleteTaskHandler(w http.ResponseWriter, req *http.Request, id int) {
@@ -173,13 +155,7 @@ func (ts *taskServer) tagHandler(w http.ResponseWriter, req *http.Request) {
 	tag := pathParts[1]
 
 	tasks := ts.store.GetTasksByTag(tag)
-	js, err := json.Marshal(tasks)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	renderJSON(w, tasks)
 }
 
 func (ts *taskServer) dueHandler(w http.ResponseWriter, req *http.Request) {
@@ -218,13 +194,17 @@ func (ts *taskServer) dueHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	tasks := ts.store.GetTasksByDueDate(year, time.Month(month), day)
-	js, err := json.Marshal(tasks)
+	renderJSON(w, tasks)
+}
+
+func renderJSON(w http.ResponseWriter, data interface{}) {
+	json, err := json.Marshal(data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	w.Write(json)
 }
 
 func main() {
