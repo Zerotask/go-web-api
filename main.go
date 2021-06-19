@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/zerotask/go-web-api/internal/taskstore"
 )
@@ -22,44 +23,6 @@ type taskServer struct {
 func NewTaskServer() *taskServer {
 	store := taskstore.New()
 	return &taskServer{store: store}
-}
-
-func (ts *taskServer) taskHandler(w http.ResponseWriter, req *http.Request) {
-	if req.URL.Path == "/tasks/" {
-		// Request is plain "/tasks/", without trailing ID.
-		if req.Method == http.MethodPost {
-			ts.createTaskHandler(w, req)
-		} else if req.Method == http.MethodGet {
-			ts.getAllTasksHandler(w, req)
-		} else if req.Method == http.MethodDelete {
-			ts.deleteAllTasksHandler(w, req)
-		} else {
-			http.Error(w, fmt.Sprintf("expect method GET, DELETE or POST at /tasks/, got %v", req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-	} else {
-		// Request has an ID, as in "/tasks/<id>".
-		path := strings.Trim(req.URL.Path, "/")
-		pathParts := strings.Split(path, "/")
-		if len(pathParts) < 2 {
-			http.Error(w, "expect /tasks/<id> in task handler", http.StatusBadRequest)
-			return
-		}
-		id, err := strconv.Atoi(pathParts[1])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if req.Method == http.MethodDelete {
-			ts.deleteTaskHandler(w, req, int(id))
-		} else if req.Method == http.MethodGet {
-			ts.getTaskHandler(w, req, int(id))
-		} else {
-			http.Error(w, fmt.Sprintf("expect method GET or DELETE at /tasks/<id>, got %v", req.Method), http.StatusMethodNotAllowed)
-			return
-		}
-	}
 }
 
 func (ts *taskServer) createTaskHandler(w http.ResponseWriter, req *http.Request) {
@@ -112,9 +75,17 @@ func (ts *taskServer) getAllTasksHandler(w http.ResponseWriter, req *http.Reques
 	renderJSON(w, tasks)
 }
 
-func (ts *taskServer) getTaskHandler(w http.ResponseWriter, req *http.Request, id int) {
+func (ts *taskServer) getTaskHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("handling get task at %s\n", req.URL.Path)
 
+	// Read ID from the request
+	id, err := strconv.Atoi(mux.Vars(req)["id"])
+	if err != nil {
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
+
+	// Get task by ID
 	task, err := ts.store.GetTask(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -124,9 +95,13 @@ func (ts *taskServer) getTaskHandler(w http.ResponseWriter, req *http.Request, i
 	renderJSON(w, task)
 }
 
-func (ts *taskServer) deleteTaskHandler(w http.ResponseWriter, req *http.Request, id int) {
+func (ts *taskServer) deleteTaskHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("handling delete task at %s\n", req.URL.Path)
 
+	// Get ID by request
+	id, _ := strconv.Atoi(mux.Vars(req)["id"])
+
+	// Delte by ID
 	err := ts.store.DeleteTask(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -208,11 +183,16 @@ func renderJSON(w http.ResponseWriter, data interface{}) {
 }
 
 func main() {
-	router := http.NewServeMux()
+	router := mux.NewRouter()
+	router.StrictSlash(true)
 	server := NewTaskServer()
-	router.HandleFunc("/tasks/", server.taskHandler)
-	router.HandleFunc("/tag/", server.tagHandler)
-	router.HandleFunc("/due/", server.dueHandler)
+	router.HandleFunc("/tasks/", server.createTaskHandler).Methods("POST")
+	router.HandleFunc("/tasks/", server.getAllTasksHandler).Methods("GET")
+	router.HandleFunc("/tasks/", server.deleteAllTasksHandler).Methods("DELETE")
+	router.HandleFunc("/tasks/{id:[0-9]+}/", server.getTaskHandler).Methods("GET")
+	router.HandleFunc("/tasks/{id:[0-9]+}/", server.deleteTaskHandler).Methods("DELETE")
+	router.HandleFunc("/tag/{tag}/", server.tagHandler).Methods("GET")
+	router.HandleFunc("/due/{year:[0-9]+}/{month:[0-9]+}/{day:[0-9]+}/", server.dueHandler).Methods("GET")
 
 	godotenv.Load()
 	port := os.Getenv("SERVER_PORT")
